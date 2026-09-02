@@ -1,0 +1,189 @@
+name: MobileTina 2.2.6 Samsung Fix Hardened APK
+
+on:
+  push:
+    branches:
+      - agent/mobiletina-2.2.6-samsung-fixes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardened-arm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify product identity and protected UI
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.v2ray.mobiletina"' V2rayNG/app/build.gradle.kts
+          grep -q 'versionName = "2.2.6"' V2rayNG/app/build.gradle.kts
+          grep -q 'FINAL_HARDENED_BUILD' V2rayNG/app/build.gradle.kts
+          grep -q 'MobileTinaIntegrityGuard.verify' V2rayNG/app/src/main/java/com/v2ray/ang/AngApplication.kt
+          grep -q 'MobileTinaGeoAssetManager.ensureReady' V2rayNG/app/src/main/java/com/v2ray/ang/AngApplication.kt
+          grep -q 'SMART_CONNECT_MAX_CONCURRENCY = 8' V2rayNG/app/src/main/java/com/v2ray/ang/service/CoreTestService.kt
+          grep -q 'secondaryUrl' V2rayNG/app/src/main/java/com/v2ray/ang/service/RealPingWorkerService.kt
+          ! grep -q 'START_PENDING_GRACE_MS' V2rayNG/app/src/main/java/com/v2ray/ang/handler/V2RayServiceManager.kt
+          grep -q -- '-repackageclasses' V2rayNG/app/proguard-rules.pro
+          grep -q -- '-obfuscationdictionary obfuscation-dictionary.txt' V2rayNG/app/proguard-rules.pro
+          ! grep -q 'android.enableR8.fullMode=false' V2rayNG/gradle.properties
+
+          bash scripts/verify-artwork.sh
+
+      - uses: android-actions/setup-android@v4
+        with:
+          log-accepted-android-sdk-licenses: false
+          cmdline-tools-version: '14742923'
+          packages: 'platforms;android-37.0 build-tools;37.0.0 platform-tools'
+
+      - name: Install NDK 29
+        run: |
+          set -euo pipefail
+          echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=0 --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('V2rayNG/app/build.gradle.kts')
+          s = p.read_text()
+          p.write_text(s.replace('android {\n', 'android {\n    ndkVersion = "29.0.14206865"\n', 1))
+          PY
+
+      - name: Build libhevtun
+        run: bash compile-hevtun.sh
+
+      - name: Copy libhevtun
+        run: cp -r "$GITHUB_WORKSPACE/libs" "$GITHUB_WORKSPACE/V2rayNG/app"
+
+      - name: Resolve libv2ray tag
+        run: |
+          set -euo pipefail
+          pushd AndroidLibXrayLite
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          popd
+          echo "CURRENT_TAG=$CURRENT_TAG" >> "$GITHUB_ENV"
+
+      - name: Download matching libv2ray
+        uses: robinraju/release-downloader@v1.13
+        with:
+          repository: '2dust/AndroidLibXrayLite'
+          tag: ${{ env.CURRENT_TAG }}
+          fileName: 'libv2ray.aar'
+          out-file-path: V2rayNG/app/libs/
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Decode stable release keystore
+        uses: timheuer/base64-to-file@v2.0.0
+        id: android_keystore
+        with:
+          fileName: mobiletina-release.jks
+          encodedString: ${{ secrets.APP_KEYSTORE_BASE64 }}
+
+      - name: Resolve stable signer fingerprint
+        env:
+          KEYSTORE_PATH: ${{ steps.android_keystore.outputs.filePath }}
+          STORE_PASSWORD: ${{ secrets.APP_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.APP_KEYSTORE_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -s "$KEYSTORE_PATH"
+          CERT_SHA=$(keytool -exportcert -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" -alias "$KEY_ALIAS" | sha256sum | awk '{print $1}')
+          test ${#CERT_SHA} -eq 64
+          echo "CERT_SHA=$CERT_SHA" >> "$GITHUB_ENV"
+
+      - name: Test and build hardened dual ARM APK
+        env:
+          KEYSTORE_PATH: ${{ steps.android_keystore.outputs.filePath }}
+          STORE_PASSWORD: ${{ secrets.APP_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.APP_KEYSTORE_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.APP_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd V2rayNG
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          chmod 755 gradlew
+          ./gradlew \
+            testPlaystoreDebugUnitTest \
+            --tests com.v2ray.ang.handler.MobileTinaExpiryManagerTest \
+            assemblePlaystoreRelease \
+            '-PFAT_APK_ABIS=armeabi-v7a;arm64-v8a' \
+            -PFINAL_HARDENED_BUILD=true \
+            -PMOBILETINA_EXPECTED_CERT_SHA256="$CERT_SHA" \
+            -PFINAL_HARDENED_KEYSTORE="$KEYSTORE_PATH" \
+            -PFINAL_HARDENED_STORE_PASSWORD="$STORE_PASSWORD" \
+            -PFINAL_HARDENED_KEY_ALIAS="$KEY_ALIAS" \
+            -PFINAL_HARDENED_KEY_PASSWORD="$KEY_PASSWORD"
+
+      - name: Verify hardened APK
+        run: |
+          set -euo pipefail
+          APK=$(find V2rayNG/app/build/outputs/apk/playstore/release -type f -name '*armv7-armv8*.apk' -print -quit)
+          test -n "$APK"
+
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' /tmp/apksigner.txt
+          APK_CERT=$(sed -n 's/^.*certificate SHA-256 digest: //p' /tmp/apksigner.txt | head -n1 | tr -d ':' | tr 'A-F' 'a-f')
+          test "$APK_CERT" = "$CERT_SHA"
+
+          printf 'arm64-v8a\narmeabi-v7a\n' > /tmp/expected-abis
+          zipinfo -1 "$APK" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u > /tmp/apk-abis
+          diff -u /tmp/expected-abis /tmp/apk-abis
+
+          for asset in geosite.dat geoip.dat; do
+            SIZE=$(unzip -p "$APK" "assets/$asset" | wc -c)
+            test "$SIZE" -gt 65536
+          done
+
+          MAPPING=$(find V2rayNG/app/build/outputs/mapping -type f -name mapping.txt -print -quit)
+          test -s "$MAPPING"
+
+          DEX_DIR=$(mktemp -d)
+          unzip -q "$APK" 'classes*.dex' -d "$DEX_DIR"
+          find "$DEX_DIR" -type f -name 'classes*.dex' -print > /tmp/dex-files
+          test -s /tmp/dex-files
+          has_dex_token() {
+            local token="$1"
+            while IFS= read -r dex; do
+              grep -aFq -- "$token" "$dex" && return 0
+            done < /tmp/dex-files
+            return 1
+          }
+          for internal_name in \
+            'Lcom/v2ray/ang/util/MobileTinaIntegrityGuard;' \
+            'Lcom/v2ray/ang/handler/MobileTinaGeoAssetManager;' \
+            'Lcom/v2ray/ang/handler/V2RayServiceManager;'; do
+            if has_dex_token "$internal_name"; then
+              echo "::error::Internal class survived R8: $internal_name"
+              exit 1
+            fi
+          done
+
+          if zipinfo -1 "$APK" | grep -Eq '/(auto|blue|fab|nav|red|stop|white|yellow)\.webp$'; then
+            echo '::error::Protected artwork filenames survived resource shrinking'
+            exit 1
+          fi
+
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          SIZE=$(stat -c '%s' "$APK")
+          printf '%s  %s\n' "$SHA" "$(basename "$APK")" > V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-samsung-fix-hardened.sha256
+          printf 'commit=%s\napk_sha256=%s\napk_bytes=%s\nsigner_sha256=%s\n' "$GITHUB_SHA" "$SHA" "$SIZE" "$CERT_SHA" > V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-samsung-fix-hardened-report.txt
+
+      - name: Upload hardened fixed APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: MobileTina-2.2.6-samsung-fix-hardened
+          path: |
+            V2rayNG/app/build/outputs/apk/playstore/release/*armv7-armv8*.apk
+            V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-samsung-fix-hardened.sha256
+            V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-samsung-fix-hardened-report.txt
+          if-no-files-found: error
+          retention-days: 90

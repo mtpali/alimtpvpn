@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/icon"
+        android:roundIcon="@mipmap/icon"
+        android:label="@string/app_name"
+        android:theme="@style/MobileTinaAppTheme"
+        tools:replace="android:allowBackup,android:icon,android:roundIcon,android:label,android:theme">
+
+        <activity
+            android:name=".ui.MainActivity"
+            tools:node="merge">
+            <meta-data
+                android:name="android.app.shortcuts"
+                tools:node="remove" />
+        </activity>
+
+        <activity
+            android:name=".ui.X7"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.BackupActivity"
+            tools:node="remove" />
+
+        <receiver
+            android:name=".receiver.WidgetProvider"
+            tools:node="remove" />
+    </application>
+</manifest>

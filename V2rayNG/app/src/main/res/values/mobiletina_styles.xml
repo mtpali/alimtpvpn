@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="MobileTinaCircleFab">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="MobileTinaAppTheme" parent="AppThemeDayNight.NoActionBar">
+        <item name="fontFamily">@font/text</item>
+        <item name="android:fontFamily">@font/text</item>
+    </style>
+</resources>

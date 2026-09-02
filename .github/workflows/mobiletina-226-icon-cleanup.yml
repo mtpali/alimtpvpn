@@ -1,0 +1,28 @@
+name: Clean MobileTina icon transfer workflow
+
+on:
+  push:
+    branches:
+      - agent/mobiletina-2.2.6-port
+    paths:
+      - .github/workflows/mobiletina-226-icon-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/mobiletina-2.2.6-port
+          fetch-depth: 0
+      - name: Remove temporary icon workflows
+        run: |
+          set -euo pipefail
+          git config user.name "MobileTina CI"
+          git config user.email "actions@github.com"
+          git rm -f .github/workflows/mobiletina-226-app-icon.yml .github/workflows/mobiletina-226-icon-cleanup.yml
+          git commit -m "Clean launcher icon transfer workflow"
+          git push origin HEAD:agent/mobiletina-2.2.6-port

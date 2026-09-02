@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mobiletina_app_name" translatable="false">فیلترشکن</string>
+    <string name="mobiletina_status_connected">متصل شد</string>
+    <string name="mobiletina_status_disconnected">فیلترشکن خاموش است</string>
+    <string name="mobiletina_status_connecting">در حال اتصال…</string>
+    <string name="mobiletina_status_failed">اتصال ناموفق بود</string>
+    <string name="mobiletina_testing">در حال بررسی سرورها…</string>
+    <string name="mobiletina_no_working_server">هیچ سرور فعالی با پینگ معتبر پیدا نشد.</string>
+    <string name="mobiletina_ping_unknown">—</string>
+    <string name="mobiletina_ping_inactive" translatable="false">غیرفعال</string>
+    <string name="mobiletina_ping_format" translatable="false">پینگ : %1$s</string>
+    <string name="mobiletina_enable_internet" translatable="false">لطفا اینترنت را روشن کنید</string>
+    <string name="mobiletina_mode_auto" translatable="false">حالت خودکار</string>
+    <string name="mobiletina_mode_manual" translatable="false">حالت دستی</string>
+    <string name="mobiletina_tap_for_ping" translatable="false">برای بررسی پینگ لمس کنید</string>
+    <string name="mobiletina_manual_smart_connect" translatable="false">اتصال خودکار</string>
+    <string name="mobiletina_manual_smart_connect_with_icon" translatable="false">اتصال خودکار</string>
+    <string name="mobiletina_locate_selected" translatable="false">رفتن به سرور انتخاب‌شده</string>
+    <string name="mobiletina_countdown_format" translatable="false">%1$d</string>
+    <string name="mobiletina_smart_countdown_format" translatable="false">در حال انتخاب بهترین سرور • %1$d ثانیه</string>
+    <string name="mobiletina_smart_countdown_short" translatable="false">%1$d ثانیه</string>
+    <string name="mobiletina_subscription_status" translatable="false">Subscription</string>
+    <string name="mobiletina_subscription_used" translatable="false">مصرف‌شده: %1$s</string>
+    <string name="mobiletina_subscription_days_remaining" translatable="false">.</string>
+    <string name="mobiletina_subscription_usage_compact" translatable="false">%1$s / %2$s</string>
+    <string name="mobiletina_subscription_secret_title" translatable="false">.</string>
+    <string name="mobiletina_copy_subscription_link" translatable="false">.</string>
+    <string name="mobiletina_copy_all_configs" translatable="false">کپی تمام کانفیگ‌ها</string>
+    <string name="mobiletina_close" translatable="false">.</string>
+    <string name="mobiletina_confirm" translatable="false">تایید</string>
+    <string name="mobiletina_delete_vpn" translatable="false">حذف فیلترشکن</string>
+    <string name="mobiletina_reset_title" translatable="false">حذف فیلترشکن</string>
+    <string name="mobiletina_reset_message" translatable="false">تمام اشتراک‌ها و کانفیگ‌های برنامه پاک شوند؟ این عملیات قابل بازگشت نیست.</string>
+    <string name="mobiletina_reset_confirm" translatable="false">حذف</string>
+    <string name="mobiletina_reset_done" translatable="false">تمام اشتراک‌ها و کانفیگ‌ها پاک شدند</string>
+    <string name="mobiletina_store_about_title" translatable="false">درباره موبایل تینا</string>
+    <string name="mobiletina_store_page_title" translatable="false">درباره ما</string>
+    <string name="mobiletina_store_address_section" translatable="false">آدرس فروشگاه</string>
+    <string name="mobiletina_store_address_branch_1" translatable="false">شعبه اول : کتالم ، جنب دبستان شهید بهشتی</string>
+    <string name="mobiletina_store_address_branch_2" translatable="false">شعبه دوم : رامسر ، ابریشم محله ، جنب بانک رفاه</string>
+    <string name="mobiletina_real_delay" translatable="false">Real Delay</string>
+</resources>

@@ -1,0 +1,328 @@
+name: MobileTina 2.2.6 Hardened Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hardened-arm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify MobileTina source and hardening contracts
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.v2ray.mobiletina"' V2rayNG/app/build.gradle.kts
+          grep -q 'versionName = "2.2.6"' V2rayNG/app/build.gradle.kts
+          grep -q 'versionCode = 744' V2rayNG/app/build.gradle.kts
+          grep -q 'FINAL_HARDENED_BUILD' V2rayNG/app/build.gradle.kts
+          grep -q 'isMinifyEnabled = true' V2rayNG/app/build.gradle.kts
+          grep -q 'isShrinkResources = true' V2rayNG/app/build.gradle.kts
+          grep -q 'resourceConfigurations.add("fa")' V2rayNG/app/build.gradle.kts
+          grep -q -- '-repackageclasses' V2rayNG/app/proguard-rules.pro
+          grep -q -- '-allowaccessmodification' V2rayNG/app/proguard-rules.pro
+          grep -q -- '-obfuscationdictionary obfuscation-dictionary.txt' V2rayNG/app/proguard-rules.pro
+          grep -q 'MobileTinaIntegrityGuard.verify' V2rayNG/app/src/main/java/com/v2ray/ang/AngApplication.kt
+          grep -q 'MobileTinaIntegrityGuard.verify(this)' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          grep -q 'MobileTinaIntegrityGuard.verify(context.applicationContext)' V2rayNG/app/src/main/java/com/v2ray/ang/core/CoreServiceManager.kt
+          grep -q 'MobileTinaGeoAssetManager.ensureReady' V2rayNG/app/src/main/java/com/v2ray/ang/AngApplication.kt
+          grep -q 'SMART_CONNECT_MAX_CONCURRENCY = 8' V2rayNG/app/src/main/java/com/v2ray/ang/service/CoreTestService.kt
+          grep -q 'secondaryUrl' V2rayNG/app/src/main/java/com/v2ray/ang/service/RealPingWorkerService.kt
+          ! grep -q 'START_PENDING_GRACE_MS' V2rayNG/app/src/main/java/com/v2ray/ang/handler/V2RayServiceManager.kt
+          grep -q 'app.stopService(Intent(app, serviceClass))' V2rayNG/app/src/main/java/com/v2ray/ang/handler/V2RayServiceManager.kt
+          grep -q 'stopAllService(isForced = false)' V2rayNG/app/src/main/java/com/v2ray/ang/service/CoreVpnService.kt
+          grep -q 'isSubscriptionExpiredCached()' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          grep -q 'reloadServerListAsync()' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          ! grep -q 'android.enableR8.fullMode=false' V2rayNG/gradle.properties
+          ! grep -Eq 'installSecretHold|shouldRevealAfterTap|MobileTinaHiddenAccessPolicy' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          grep -q 'MANUAL_SUBSCRIPTION_HOLD_MS = 10_000L' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          grep -q 'showManualSubscriptionQr(subscriptionId)' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          grep -q 'startsWith(a(0), ignoreCase = true)' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MobileTinaHiddenAccess.kt
+          grep -q 'MobileTinaFirstLaunchDialog.showOnce' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          grep -q 'continueInitialLaunch()' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt
+          grep -q 'setColor(Color.BLACK)' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MobileTinaFirstLaunchDialog.kt
+          grep -q 'setStroke(dp(activity, 1), Color.WHITE)' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MobileTinaFirstLaunchDialog.kt
+          grep -q 'textAlignment = View.TEXT_ALIGNMENT_CENTER' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MobileTinaFirstLaunchDialog.kt
+          ! grep -q 'text = q.a(8)' V2rayNG/app/src/main/java/com/v2ray/ang/ui/MobileTinaFirstLaunchDialog.kt
+          grep -q 'setNavigationOnClickListener' V2rayNG/app/src/main/java/com/v2ray/ang/ui/X7.kt
+
+          bash scripts/verify-artwork.sh
+
+      - uses: android-actions/setup-android@v4
+        with:
+          log-accepted-android-sdk-licenses: false
+          cmdline-tools-version: '14742923'
+          packages: 'platforms;android-37.0 build-tools;37.0.0 platform-tools'
+
+      - name: Install NDK 29
+        run: |
+          set -euo pipefail
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --channel=0 --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('V2rayNG/app/build.gradle.kts')
+          s = p.read_text()
+          p.write_text(s.replace('android {\n', 'android {\n    ndkVersion = "29.0.14206865"\n', 1))
+          PY
+
+      - name: Restore libhevtun cache
+        id: hev-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/libs
+          key: mt226-hev-${{ runner.os }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
+
+      - name: Build libhevtun
+        if: steps.hev-cache.outputs.cache-hit != 'true'
+        run: bash compile-hevtun.sh
+
+      - name: Save libhevtun cache
+        if: steps.hev-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/libs
+          key: mt226-hev-${{ runner.os }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
+
+      - name: Copy libhevtun
+        run: cp -r "${{ github.workspace }}/libs" "${{ github.workspace }}/V2rayNG/app"
+
+      - name: Resolve libv2ray tag
+        run: |
+          set -euo pipefail
+          pushd AndroidLibXrayLite
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          popd
+          echo "CURRENT_TAG=$CURRENT_TAG" >> "$GITHUB_ENV"
+
+      - name: Download matching libv2ray
+        uses: robinraju/release-downloader@v1.13
+        with:
+          repository: '2dust/AndroidLibXrayLite'
+          tag: ${{ env.CURRENT_TAG }}
+          fileName: 'libv2ray.aar'
+          out-file-path: V2rayNG/app/libs/
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Prepare hardened APK signing certificate
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.APP_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.APP_KEYSTORE_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.APP_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYSTORE_PATH="$RUNNER_TEMP/mobiletina-release.jks"
+          if [ -n "$RELEASE_KEYSTORE_BASE64" ]; then
+            test -n "$RELEASE_STORE_PASSWORD"
+            test -n "$RELEASE_KEY_ALIAS"
+            test -n "$RELEASE_KEY_PASSWORD"
+            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            STORE_PASSWORD="$RELEASE_STORE_PASSWORD"
+            KEY_ALIAS="$RELEASE_KEY_ALIAS"
+            KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+            SIGNING_SOURCE=repository-secret
+          else
+            STORE_PASSWORD=android
+            KEY_ALIAS=androiddebugkey
+            KEY_PASSWORD=android
+            SIGNING_SOURCE=ephemeral-ci
+            keytool -genkeypair -noprompt \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$STORE_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -keypass "$KEY_PASSWORD" \
+              -dname 'CN=MobileTina CI,O=MobileTina,C=IR' \
+              -keyalg RSA -keysize 4096 -validity 10000
+          fi
+          test -s "$KEYSTORE_PATH"
+          CERT_SHA=$(keytool -exportcert \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" | sha256sum | awk '{print $1}')
+          test ${#CERT_SHA} -eq 64
+          echo "KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "CERT_SHA=$CERT_SHA" >> "$GITHUB_ENV"
+          echo "SIGNING_SOURCE=$SIGNING_SOURCE" >> "$GITHUB_ENV"
+          echo "Signer source: $SIGNING_SOURCE"
+          echo "Signer SHA-256: $CERT_SHA"
+
+      - name: Randomize protected string resource identifiers
+        run: python3 scripts/obfuscate-string-resources.py V2rayNG/app/src/main
+
+      - name: Test and build hardened ARMv7 + ARMv8 release
+        run: |
+          set -euo pipefail
+          cd V2rayNG
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          chmod 755 gradlew
+          ./gradlew \
+            testPlaystoreDebugUnitTest \
+            --tests com.v2ray.ang.handler.MobileTinaExpiryManagerTest \
+            --tests com.v2ray.ang.ui.MobileTinaFirstLaunchTextTest \
+            --tests com.v2ray.ang.ui.MobileTinaHiddenAccessTest \
+            assemblePlaystoreRelease \
+            '-PFAT_APK_ABIS=armeabi-v7a;arm64-v8a' \
+            -PFINAL_HARDENED_BUILD=true \
+            -PMOBILETINA_EXPECTED_CERT_SHA256="$CERT_SHA" \
+            -PFINAL_HARDENED_KEYSTORE="$KEYSTORE_PATH" \
+            -PFINAL_HARDENED_STORE_PASSWORD="$STORE_PASSWORD" \
+            -PFINAL_HARDENED_KEY_ALIAS="$KEY_ALIAS" \
+            -PFINAL_HARDENED_KEY_PASSWORD="$KEY_PASSWORD"
+
+      - name: Verify signature, geo payload, obfuscation and ABIs
+        run: |
+          set -euo pipefail
+          APK=$(find V2rayNG/app/build/outputs/apk/playstore/release -type f -name '*armv7-armv8*.apk' -print -quit)
+          test -n "$APK"
+          echo "Verifying $APK"
+
+          $ANDROID_HOME/build-tools/37.0.0/apksigner verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner.txt
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' /tmp/apksigner.txt
+          APK_CERT=$(sed -n 's/^.*certificate SHA-256 digest: //p' /tmp/apksigner.txt | head -n1 | tr -d ':' | tr 'A-F' 'a-f')
+          test "$APK_CERT" = "$CERT_SHA"
+
+          printf 'arm64-v8a\narmeabi-v7a\n' > /tmp/expected-abis
+          zipinfo -1 "$APK" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u > /tmp/apk-abis
+          diff -u /tmp/expected-abis /tmp/apk-abis
+
+          # The bundled geo files are what the atomic first-run bootstrap repairs from.
+          for asset in geosite.dat geoip.dat; do
+            SIZE=$(unzip -p "$APK" "assets/$asset" | wc -c)
+            test "$SIZE" -gt 65536
+            echo "$asset bytes=$SIZE"
+          done
+
+          MAPPING=$(find V2rayNG/app/build/outputs/mapping -type f -name mapping.txt -print -quit)
+          test -n "$MAPPING"
+          test -s "$MAPPING"
+
+          DEX_DIR=$(mktemp -d)
+          unzip -q "$APK" 'classes*.dex' -d "$DEX_DIR"
+          find "$DEX_DIR" -type f -name 'classes*.dex' -print > /tmp/dex-files
+          test -s /tmp/dex-files
+
+          has_dex_token() {
+            local token="$1"
+            while IFS= read -r dex; do
+              grep -aFq -- "$token" "$dex" && return 0
+            done < /tmp/dex-files
+            return 1
+          }
+
+          # App implementation names should be renamed/repackaged by R8.
+          for internal_name in \
+            'Lcom/v2ray/ang/util/MobileTinaIntegrityGuard;' \
+            'Lcom/v2ray/ang/handler/MobileTinaGeoAssetManager;' \
+            'Lcom/v2ray/ang/ui/MobileTinaFirstLaunchDialog;' \
+            'Lcom/v2ray/ang/handler/V2RayServiceManager;'; do
+            if has_dex_token "$internal_name"; then
+              echo "::error::Internal class was not obfuscated/repackaged: $internal_name"
+              exit 1
+            fi
+          done
+
+          # Hidden-access values are AES-GCM records, never plaintext DEX constants.
+          for protected_text in \
+            'raw.githubusercontent.com' \
+            'بخش اشتراک‌ها به مدت ۶۰ ثانیه فعال شد' \
+            'تمام کانفیگ‌های این اشتراک کپی شدند' \
+            'showManualSubscriptionQr' \
+            'instagram 1 : mobile.tina' \
+            'instagram 2 : mobile.tina2' \
+            'instagram 3 : mobile.tinaa' \
+            'instagram 3 : mbile.tinaa'; do
+            if has_dex_token "$protected_text"; then
+              echo "::error::Protected hidden-access text survived as plaintext: $protected_text"
+              exit 1
+            fi
+          done
+
+          # Custom string identifiers are randomized per build. Critical hidden-feature text is
+          # decrypted only at runtime and must not remain in the compiled resource table.
+          $ANDROID_HOME/build-tools/37.0.0/aapt2 dump resources "$APK" > /tmp/resources-dump.txt
+          if grep -Eq 'string/mobiletina_' /tmp/resources-dump.txt; then
+            echo "::error::Readable MobileTina string resource identifier survived"
+            exit 1
+          fi
+          unzip -p "$APK" resources.arsc > /tmp/resources.arsc
+          for protected_resource_text in \
+            '%1$d روز باقی‌مانده' \
+            'کپی لینک اشتراک' \
+            'instagram 1 : mobile.tina' \
+            'instagram 2 : mobile.tina2' \
+            'instagram 3 : mobile.tinaa' \
+            'instagram 3 : mbile.tinaa'; do
+            if grep -aFq -- "$protected_resource_text" /tmp/resources.arsc; then
+              echo "::error::Protected UI text survived in resources.arsc: $protected_resource_text"
+              exit 1
+            fi
+          done
+
+          # Only Persian-qualified and unqualified fallback resources may remain. Dependency
+          # locales (af, ar, de, etc.) are rejected to prevent the large editable string list.
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          dump = Path('/tmp/resources-dump.txt').read_text(errors='replace')
+          locales = set()
+          for config in re.findall(r'config \(([^)]*)\)', dump):
+              for token in config.split('-'):
+                  if re.fullmatch(r'[a-z]{2,3}', token) and token not in {'any'}:
+                      locales.add(token)
+          unexpected = sorted(locales - {'fa'})
+          if unexpected:
+              raise SystemExit(f'Unexpected packaged locales: {unexpected}')
+          print(f'Packaged qualified locales: {sorted(locales)}')
+          PY
+
+          # Native/gomobile descriptors must remain exact or the core can crash.
+          for runtime_class in \
+            'Lcom/v2ray/ang/core/CoreServiceManager$CoreCallback;' \
+            'Lcom/v2ray/ang/core/CoreServiceManager$XrayProcessFinder;' \
+            'Lcom/v2ray/ang/service/TProxyService;' \
+            'Llibv2ray/CoreController;' \
+            'Lgo/Seq;'; do
+            has_dex_token "$runtime_class" || { echo "::error::Required runtime class missing: $runtime_class"; exit 1; }
+          done
+
+          # Resource shrinking must hide the original protected artwork file names.
+          if zipinfo -1 "$APK" | grep -Eq '/(auto|blue|fab|nav|red|stop|white|yellow)\.webp$'; then
+            echo "::error::Original MobileTina artwork filename survived resource optimization"
+            exit 1
+          fi
+
+          SHA=$(sha256sum "$APK" | awk '{print $1}')
+          SIZE=$(stat -c '%s' "$APK")
+          printf '%s  %s\n' "$SHA" "$(basename "$APK")" > V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-armv7-armv8-hardened.sha256
+          printf 'commit=%s\napk_sha256=%s\napk_bytes=%s\nsigner_sha256=%s\nsigning_source=%s\n' \
+            "$GITHUB_SHA" "$SHA" "$SIZE" "$CERT_SHA" "$SIGNING_SOURCE" \
+            > V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-hardened-report.txt
+
+      - name: Upload hardened MobileTina APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: MobileTina-2.2.6-armv7-armv8-webp-final
+          path: |
+            V2rayNG/app/build/outputs/apk/playstore/release/*armv7-armv8*.apk
+            V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-armv7-armv8-hardened.sha256
+            V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-hardened-report.txt
+          if-no-files-found: error
+          retention-days: 90
