@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorTextPrimary">#1C1B1F</color>
+    <color name="mobiletina_manual_dock_bg">#FFFFFF</color>
+    <color name="mobiletina_manual_dock_text">#1C1B1F</color>
+    <color name="mobiletina_smart_connect_bg">#FFFFFF</color>
+    <color name="mobiletina_smart_connect_text">#000000</color>
+    <color name="mobiletina_smart_connect_stroke">#000000</color>
+    <color name="mobiletina_subscription_progress_indicator">#54545A</color>
+    <color name="mobiletina_subscription_progress_track">#C8C8C8</color>
+    <color name="mobiletina_subscription_card">#F8F9FC</color>
+    <color name="mobiletina_subscription_stroke">#E2E5EC</color>
+    <color name="mobiletina_mode_surface">#F1F2F6</color>
+    <color name="mobiletina_mode_selected">#17181C</color>
+    <color name="mobiletina_mode_unselected">#F1F2F6</color>
+    <color name="mobiletina_mode_text_selected">#FFFFFF</color>
+    <color name="mobiletina_mode_text_unselected">#5F636D</color>
+    <color name="mobiletina_mode_stroke">#DDE0E7</color>
+    <color name="mobiletina_server_card">#FFFFFF</color>
+    <color name="mobiletina_server_card_selected">#EEF4FF</color>
+    <color name="mobiletina_server_stroke">#E5E7ED</color>
+    <color name="mobiletina_server_stroke_selected">#4B7BEC</color>
+    <color name="mobiletina_server_name">#202124</color>
+    <color name="mobiletina_server_ping_chip">#EEF8F1</color>
+    <color name="mobiletina_server_ping_chip_inactive">#FDEDEE</color>
+</resources>

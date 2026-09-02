@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/import_qrcode"
+        android:icon="@drawable/ic_scan_24dp"
+        android:title="@string/menu_item_import_config_qrcode"
+        app:showAsAction="always" />
+
+    <item
+        android:icon="@drawable/ic_add_24dp"
+        android:title="@string/menu_item_add_config"
+        app:showAsAction="always">
+        <menu>
+            <item
+                android:id="@+id/import_clipboard"
+                android:title="@string/menu_item_import_config_clipboard"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_local"
+                android:title="@string/menu_item_import_config_local"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_policy_group"
+                android:title="@string/menu_item_import_config_policy_group"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_vmess"
+                android:title="@string/menu_item_import_config_manually_vmess"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_vless"
+                android:title="@string/menu_item_import_config_manually_vless"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_ss"
+                android:title="@string/menu_item_import_config_manually_ss"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_socks"
+                android:title="@string/menu_item_import_config_manually_socks"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_http"
+                android:title="@string/menu_item_import_config_manually_http"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_trojan"
+                android:title="@string/menu_item_import_config_manually_trojan"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_wireguard"
+                android:title="@string/menu_item_import_config_manually_wireguard"
+                app:showAsAction="never" />
+            <item
+                android:id="@+id/import_manually_hysteria2"
+                android:title="@string/menu_item_import_config_manually_hysteria2"
+                app:showAsAction="never" />
+        </menu>
+    </item>
+
+    <item
+        android:id="@+id/service_restart"
+        android:title="@string/title_service_restart"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/real_ping_all"
+        android:title="@string/title_real_ping_all_server"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/sort_by_test_results"
+        android:title="@string/title_sort_by_test_results"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/sub_update"
+        android:title="@string/title_sub_update"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/del_duplicate_config"
+        android:title="@string/title_del_duplicate_config"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/del_invalid_config"
+        android:title="@string/title_del_invalid_config"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/del_all_config"
+        android:title="@string/title_del_all_config"
+        app:showAsAction="never" />
+
+    <!-- Hidden legacy IDs preserve source compatibility while removing these actions from MobileTina. -->
+    <item
+        android:id="@+id/mobiletina_locate_selected"
+        android:title="@string/mobiletina_locate_selected"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/ping_all"
+        android:title="@string/title_real_ping_all_server"
+        android:visible="false"
+        app:showAsAction="never" />
+</menu>

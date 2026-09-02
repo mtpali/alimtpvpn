@@ -1,0 +1,204 @@
+name: MobileTina 2.2.6 PR CI
+
+on:
+  pull_request:
+    branches:
+      - agent/v2rayng-2.2.6-base
+  workflow_dispatch:
+
+jobs:
+  final-arm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Verify MobileTina identity, behavior contracts and exact artwork
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.v2ray.mobiletina"' V2rayNG/app/build.gradle.kts
+          grep -q 'versionName = "2.2.6"' V2rayNG/app/build.gradle.kts
+          grep -q 'versionCode = 744' V2rayNG/app/build.gradle.kts
+          grep -q 'isMinifyEnabled = false' V2rayNG/app/build.gradle.kts
+          grep -q 'isShrinkResources = false' V2rayNG/app/build.gradle.kts
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          main = Path('V2rayNG/app/src/main/java/com/v2ray/ang/ui/MainActivity.kt').read_text()
+          create_start = main.index('override fun onCreate(savedInstanceState: Bundle?)')
+          create_end = main.index('private fun setupModeTabs()', create_start)
+          on_create = main[create_start:create_end]
+          if 'updateSubscriptionOnResume()' in on_create:
+              raise SystemExit('automatic subscription refresh must not run from onCreate')
+
+          resume_start = main.index('override fun onResume()')
+          resume_end = main.index('private fun updateSubscriptionOnResume()', resume_start)
+          on_resume = main[resume_start:resume_end]
+          if 'updateSubscriptionOnResume()' not in on_resume:
+              raise SystemExit('automatic subscription refresh must remain in onResume')
+
+          swipe = Path('V2rayNG/app/src/main/java/com/v2ray/ang/ui/MobileTinaModeContainer.kt').read_text()
+          for required in ('dispatchTouchEvent', 'dx > 0f', 'swipeListener?.invoke'):
+              if required not in swipe:
+                  raise SystemExit(f'missing two-way mode swipe contract: {required}')
+
+          proxy = Path('V2rayNG/app/src/main/java/com/v2ray/ang/ui/PerAppProxyActivity.kt').read_text()
+          for package_name in (
+              'org.telegram.messenger',
+              'com.instagram.android',
+              'com.whatsapp',
+              'com.android.chrome',
+              'com.google.android.googlequicksearchbox',
+          ):
+              if package_name not in proxy:
+                  raise SystemExit(f'missing pinned proxy app: {package_name}')
+
+          toast = Path('V2rayNG/app/src/playstore/res/values/mobiletina_toast_overrides.xml').read_text()
+          if 'ابتدا یک سرور انتخاب کنید' not in toast:
+              raise SystemExit('Persian select-config toast override is missing')
+          PY
+
+          bash scripts/verify-artwork.sh
+
+      - uses: android-actions/setup-android@v4
+        with:
+          log-accepted-android-sdk-licenses: false
+          cmdline-tools-version: '14742923'
+          packages: 'platforms;android-37.0 build-tools;37.0.0 platform-tools'
+
+      - name: Install NDK 29
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --channel=0 --install "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> $GITHUB_ENV
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('V2rayNG/app/build.gradle.kts')
+          s=p.read_text()
+          p.write_text(s.replace('android {\n', 'android {\n    ndkVersion = "29.0.14206865"\n', 1))
+          PY
+
+      - name: Restore libhevtun cache
+        id: hev-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/libs
+          key: mt226-hev-${{ runner.os }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
+
+      - name: Build libhevtun
+        if: steps.hev-cache.outputs.cache-hit != 'true'
+        run: bash compile-hevtun.sh
+
+      - name: Save libhevtun cache
+        if: steps.hev-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ github.workspace }}/libs
+          key: mt226-hev-${{ runner.os }}-${{ hashFiles('.git/modules/hev-socks5-tunnel/HEAD') }}-${{ hashFiles('compile-hevtun.sh') }}
+
+      - name: Copy libhevtun
+        run: cp -r ${{ github.workspace }}/libs ${{ github.workspace }}/V2rayNG/app
+
+      - name: Resolve libv2ray tag
+        run: |
+          pushd AndroidLibXrayLite
+          CURRENT_TAG=$(git describe --tags --abbrev=0)
+          echo "CURRENT_TAG=$CURRENT_TAG" >> $GITHUB_ENV
+          popd
+
+      - name: Download matching libv2ray
+        uses: robinraju/release-downloader@v1.13
+        with:
+          repository: '2dust/AndroidLibXrayLite'
+          tag: ${{ env.CURRENT_TAG }}
+          fileName: 'libv2ray.aar'
+          out-file-path: V2rayNG/app/libs/
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Test and build optimized behavior-preserving ARMv7 + ARMv8 release
+        run: |
+          cd V2rayNG
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          chmod 755 gradlew
+          ./gradlew testPlaystoreDebugUnitTest \
+            --tests com.v2ray.ang.handler.MobileTinaExpiryManagerTest \
+            assemblePlaystoreRelease \
+            '-PFAT_APK_ABIS=armeabi-v7a;arm64-v8a' \
+            -PFINAL_BUILD_SIGNING=debug
+
+      - name: Verify final dual-ARM APK and runtime contracts
+        run: |
+          set -euo pipefail
+          APK=$(find V2rayNG/app/build/outputs/apk/playstore/release -type f -name '*armv7-armv8*.apk' -print -quit)
+          test -n "$APK"
+          echo "Verifying $APK"
+          $ANDROID_HOME/build-tools/37.0.0/apksigner verify --verbose --print-certs "$APK"
+
+          printf 'arm64-v8a\narmeabi-v7a\n' > /tmp/expected-abis
+          zipinfo -1 "$APK" | sed -n 's#^lib/\([^/]*\)/.*#\1#p' | sort -u > /tmp/apk-abis
+          diff -u /tmp/expected-abis /tmp/apk-abis
+
+          DEX_DIR=$(mktemp -d)
+          unzip -q "$APK" 'classes*.dex' -d "$DEX_DIR"
+          find "$DEX_DIR" -type f -name 'classes*.dex' -print > /tmp/dex-files
+          test -s /tmp/dex-files
+
+          has_dex_token() {
+            local token="$1"
+            while IFS= read -r dex; do
+              if grep -aFq -- "$token" "$dex"; then
+                return 0
+              fi
+            done < /tmp/dex-files
+            return 1
+          }
+
+          for field in configVersion configType subscriptionId remarks server serverPort password method flow username network headerType host path security sni publicKey shortId; do
+            if ! has_dex_token "$field"; then
+              echo "::error::Persisted Gson/MMKV field missing from release: $field"
+              exit 1
+            fi
+          done
+          for enum_name in VMESS CUSTOM SHADOWSOCKS SOCKS VLESS TROJAN WIREGUARD HYSTERIA2 HYSTERIA HTTP POLICYGROUP PROXYCHAIN; do
+            if ! has_dex_token "$enum_name"; then
+              echo "::error::Persisted config enum name missing from release: $enum_name"
+              exit 1
+            fi
+          done
+
+          for runtime_class in \
+            'Lcom/v2ray/ang/core/CoreServiceManager$CoreCallback;' \
+            'Lcom/v2ray/ang/core/CoreServiceManager$XrayProcessFinder;' \
+            'Lcom/v2ray/ang/service/TProxyService;' \
+            'Llibv2ray/CoreController;' \
+            'Lgo/Seq;'; do
+            if ! has_dex_token "$runtime_class"; then
+              echo "::error::Required native/runtime class missing: $runtime_class"
+              exit 1
+            fi
+          done
+
+          $ANDROID_HOME/build-tools/37.0.0/aapt2 dump resources "$APK" > /tmp/apk-resources.txt
+          if ! grep -Fq 'ابتدا یک سرور انتخاب کنید' /tmp/apk-resources.txt; then
+            echo "::error::Persian select-server toast missing from packaged APK resources"
+            exit 1
+          fi
+
+          sha256sum "$APK" | tee V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-armv7-armv8.sha256
+
+      - name: Upload final MobileTina dual-ARM APK
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: MobileTina-2.2.6-armv7-armv8-stable
+          path: |
+            V2rayNG/app/build/outputs/apk/playstore/release/*armv7-armv8*.apk
+            V2rayNG/app/build/outputs/apk/playstore/release/MobileTina-2.2.6-armv7-armv8.sha256
+          if-no-files-found: error
+          retention-days: 90
